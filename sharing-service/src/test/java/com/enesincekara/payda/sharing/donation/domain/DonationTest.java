@@ -30,5 +30,28 @@ class DonationTest {
         );
     }
 
+    @Test
+    void shouldReduceAvailablePackagesWhenReserved(){
+        Donation donation = new Donation("Paketli ekmek",40);
+
+        donation.reserve(15);
+        assertEquals(25, donation.getAvailablePackageCount());
+        assertEquals(40, donation.getTotalPackageCount());
+        assertEquals(15, donation.getReservedPackageCount());
+    }
+
+    @Test
+    void shouldKeepAvailablePackagesWhenReservationIsRejected(){
+        Donation donation =  new Donation("Paketli ekmek",40);
+        donation.reserve(15);
+        assertThrows(
+                IllegalStateException.class,
+                () -> donation.reserve(26)
+        );
+
+        assertEquals(25, donation.getAvailablePackageCount());
+        assertEquals(15, donation.getReservedPackageCount());
+    }
+
 
 }

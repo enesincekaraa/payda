@@ -1,0 +1,1 @@
+alter table donation rename to donations;

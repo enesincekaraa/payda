@@ -1,3 +1,13 @@
 spring:
   application:
     name: sharing-service
+
+  datasource:
+    url: ${PAYDA_DB_URL:jdbc:postgresql://localhost:5434/payda_sharing}
+    username: ${PAYDA_DB_USER:payda}
+    password: ${PAYDA_DB_PASSWORD:payda_local}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
