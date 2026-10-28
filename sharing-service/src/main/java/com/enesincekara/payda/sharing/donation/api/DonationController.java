@@ -6,6 +6,8 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -55,14 +57,12 @@ public class DonationController {
         return ResponseEntity.ok(response);
     }
 
-    @Operation(summary = "Bağıştan paket ayır")
-    @PostMapping("/{id}/reserve")
-    public ResponseEntity<DonationResponse> reserve(@PathVariable("id") UUID id,@Valid @RequestBody ReserveDonationRequest request) {
-        Optional<Donation> donation = donationService.reserve(id, request.packageCount());
-
-        if (donation.isEmpty()){
-            return ResponseEntity.notFound().build();
-        }
-        return ResponseEntity.ok(DonationResponse.from(donation.get()));
+    @GetMapping("/available")
+    @Operation(summary = "Kullanılabilir bağışları sayfalayarak listele")
+    public DonationPageResponse findAvailable(
+            @RequestParam(name = "page",defaultValue = "0") @Min(0) int page,
+            @RequestParam(name = "size",defaultValue = "10") @Min(1) @Max(50) int size) {
+        return DonationPageResponse.from(donationService.findAvailable(page, size));
     }
+
 }
