@@ -22,19 +22,33 @@ public class ReservationService {
     }
 
     @Transactional
-    public Reservation create(UUID donationId, int packageCount) {
-        Donation donation = donationRepository.findById(donationId).orElseThrow(
-                ()-> new DonationNotFoundException(donationId)
-        );
+    public Reservation create(UUID donationId, int packageCount,UUID idempotencyKey) {
+        if (idempotencyKey == null) {
+            throw new IllegalArgumentException(
+                    "Idempotency key must not be null"
+            );
+        }
+        Optional<Reservation> existingReservation =reservationRepository.findByIdempotencyKey(idempotencyKey);
 
+        if (existingReservation.isPresent()) {
+            Reservation existing = existingReservation.get();
+            boolean sameDonation = existing.getDonationId().equals(donationId);
+            boolean samePackage = existing.getPackageCount() == packageCount;
+
+            if (!sameDonation || !samePackage){
+                throw new IdempotencyKeyConflictException();
+            }
+            return existing;
+        }
+        Donation donation = donationRepository.findById(donationId).orElseThrow(()-> new DonationNotFoundException(donationId));
         donation.reserve(packageCount);
 
-        Reservation reservation = new Reservation(
-                donationId,
-                packageCount
-        );
-
-       return reservationRepository.saveAndFlush(reservation);
+        Reservation reservation = new Reservation(donationId, packageCount, idempotencyKey);
+        return reservationRepository.saveAndFlush(reservation);
+    }
+    @Transactional
+    public Reservation create(UUID donationId, int packageCount) {
+        return create(donationId, packageCount, UUID.randomUUID());
     }
     @Transactional(readOnly = true)
     public Optional<Reservation>  findById(UUID id) {

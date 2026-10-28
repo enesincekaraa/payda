@@ -19,10 +19,11 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest
 @Import(PostgresTestConfiguration.class)
@@ -236,4 +237,153 @@ class ReservationServiceTest {
 
         assertEquals(0L, reservationRepository.count());
     }
+
+    @Test
+    void shouldReturnExistingReservationWhenSameRequestIsRepeated(){
+        Donation donation = donationRepository.saveAndFlush(
+                new Donation("Paketli ekmek", 40)
+        );
+        UUID idempotencyKey = UUID.randomUUID();
+        Reservation first = reservationService.create(donation.getId(),20,idempotencyKey);
+
+        Reservation repeated = reservationService.create(
+                donation.getId(),
+                20,
+                idempotencyKey);
+
+        assertEquals(first.getId(), repeated.getId());
+        assertEquals(1L, reservationRepository.count());
+        Donation updatedDonation = donationRepository.findById(donation.getId()).orElseThrow();
+
+        assertEquals(20,updatedDonation.getReservedPackageCount());
+        assertEquals(20,updatedDonation.getAvailablePackageCount());
+    }
+
+    @Test
+    void shouldRejectSameIdempotencyKeyWithDifferentPackageCount(){
+        Donation donation = donationRepository.saveAndFlush(
+                new Donation("Paketli ekmek", 40)
+        );
+        UUID idempotencyKey = UUID.randomUUID();
+        Reservation first = reservationService.create(donation.getId(),20,idempotencyKey);
+
+        assertThrows(
+                IdempotencyKeyConflictException.class,
+                ()-> reservationService.create(donation.getId(),10,idempotencyKey)
+        );
+        Donation updatedDonation = donationRepository.findById(donation.getId()).orElseThrow();
+        assertEquals(1L, reservationRepository.count());
+        assertEquals(20,updatedDonation.getAvailablePackageCount());
+
+
+    }
+    @Test
+    void shouldRejectSameIdempotencyKeyWithDifferentDonation() {
+        Donation firstDonation = donationRepository.saveAndFlush(
+                new Donation("Paketli ekmek", 40)
+        );
+
+        Donation secondDonation = donationRepository.saveAndFlush(
+                new Donation("Sebze paketi", 30)
+        );
+
+        UUID idempotencyKey = UUID.randomUUID();
+
+        reservationService.create(
+                firstDonation.getId(),
+                20,
+                idempotencyKey
+        );
+
+        assertThrows(
+                IdempotencyKeyConflictException.class,
+                () -> reservationService.create(
+                        secondDonation.getId(),
+                        20,
+                        idempotencyKey
+                )
+        );
+
+        assertEquals(1L, reservationRepository.count());
+
+        Donation updatedFirstDonation = donationRepository
+                .findById(firstDonation.getId())
+                .orElseThrow();
+
+        Donation updatedSecondDonation = donationRepository
+                .findById(secondDonation.getId())
+                .orElseThrow();
+
+        assertEquals(20, updatedFirstDonation.getReservedPackageCount());
+        assertEquals(20, updatedFirstDonation.getAvailablePackageCount());
+
+        assertEquals(0, updatedSecondDonation.getReservedPackageCount());
+        assertEquals(30, updatedSecondDonation.getAvailablePackageCount());
+    }
+
+    @Test
+    void shouldCreateSeparateReservationsForDifferentIdempotencyKeys() {
+        Donation donation = donationRepository.saveAndFlush(
+                new Donation("Paketli ekmek", 40)
+        );
+
+        UUID firstKey = UUID.randomUUID();
+        UUID secondKey = UUID.randomUUID();
+
+        Reservation first = reservationService.create(
+                donation.getId(),
+                20,
+                firstKey
+        );
+
+        Reservation second = reservationService.create(
+                donation.getId(),
+                20,
+                secondKey
+        );
+
+        assertNotEquals(first.getId(), second.getId());
+        assertEquals(2L, reservationRepository.count());
+
+        Donation updatedDonation = donationRepository
+                .findById(donation.getId())
+                .orElseThrow();
+
+        assertEquals(40, updatedDonation.getReservedPackageCount());
+        assertEquals(0, updatedDonation.getAvailablePackageCount());
+    }
+
+    @Test
+    void shouldNotReactiveCancelledReservationWhenCreateIsRetried(){
+        Donation donation = donationRepository.saveAndFlush(
+                new Donation("Paketli ekmek", 40)
+        );
+
+        UUID idempotencyKey = UUID.randomUUID();
+
+        Reservation created = reservationService.create(donation.getId(),20,idempotencyKey);
+
+        reservationService.cancel(created.getId());
+
+        Reservation retried = reservationService.create(donation.getId(),20,idempotencyKey);
+
+        assertEquals(created.getId(), retried.getId());
+
+        assertEquals(
+                ReservationStatus.CANCELLED,
+                retried.getStatus()
+        );
+
+        assertEquals(1L, reservationRepository.count());
+
+        Donation updatedDonation = donationRepository
+                .findById(donation.getId())
+                .orElseThrow();
+
+        assertEquals(0, updatedDonation.getReservedPackageCount());
+        assertEquals(40, updatedDonation.getAvailablePackageCount());
+    }
+
+
+
 }

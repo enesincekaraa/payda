@@ -154,7 +154,7 @@ class DonationApiTest {
                         post(
                                 "/api/v1/donations/{id}/reservations",
                                 donation.getId()
-                        )
+                        ).header("Idempotency-Key", UUID.randomUUID().toString())
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("""
                                     {
@@ -208,7 +208,7 @@ class DonationApiTest {
                         post(
                                 "/api/v1/donations/{id}/reservations",
                                 savedDonation.getId()
-                        )
+                        ).header("Idempotency-Key", UUID.randomUUID().toString())
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("""
                                     {
@@ -262,7 +262,7 @@ class DonationApiTest {
                         post(
                                 "/api/v1/donations/{id}/reservations",
                                 UUID.randomUUID()
-                        )
+                        ).header("Idempotency-Key", UUID.randomUUID().toString())
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("""
                                     {
@@ -296,7 +296,7 @@ class DonationApiTest {
                         post(
                                 "/api/v1/donations/{id}/reservations",
                                 donationId
-                        )
+                        ).header("Idempotency-Key", UUID.randomUUID().toString())
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("""
                                     {
@@ -470,5 +470,177 @@ class DonationApiTest {
                 .andExpect(jsonPath("$.totalPages").value(3));
 
 
+    }
+    @Test
+    void shouldReturnSameReservationWhenRequestIsRetried() throws Exception {
+        Donation donation = donationRepository.saveAndFlush(
+                new Donation("Paketli ekmek", 40)
+        );
+
+        UUID idempotencyKey = UUID.randomUUID();
+
+        String requestBody = """
+            {
+              "packageCount": 20
+            }
+            """;
+
+        MvcResult firstResult = mockMvc.perform(
+                        post(
+                                "/api/v1/donations/{donationId}/reservations",
+                                donation.getId()
+                        )
+                                .header(
+                                        "Idempotency-Key",
+                                        idempotencyKey.toString()
+                                )
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(requestBody)
+                )
+                .andExpect(status().isCreated())
+                .andExpect(header().exists("Location"))
+                .andReturn();
+
+        String location = firstResult.getResponse().getHeader("Location");
+        assertNotNull(location);
+
+        UUID reservationId = UUID.fromString(
+                location.substring(location.lastIndexOf('/') + 1)
+        );
+
+        mockMvc.perform(
+                        post(
+                                "/api/v1/donations/{donationId}/reservations",
+                                donation.getId()
+                        )
+                                .header(
+                                        "Idempotency-Key",
+                                        idempotencyKey.toString()
+                                )
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(requestBody)
+                )
+                .andExpect(status().isCreated())
+                .andExpect(header().string("Location", location))
+                .andExpect(jsonPath("$.id").value(reservationId.toString()))
+                .andExpect(jsonPath("$.packageCount").value(20));
+
+        assertEquals(1L, reservationRepository.count());
+
+        Donation updatedDonation = donationRepository
+                .findById(donation.getId())
+                .orElseThrow();
+
+        assertEquals(20, updatedDonation.getReservedPackageCount());
+        assertEquals(20, updatedDonation.getAvailablePackageCount());
+    }
+
+    @Test
+    void shouldRejectReservationWithoutIdempotencyKey() throws Exception {
+        Donation donation = donationRepository.saveAndFlush(
+                new Donation("Paketli ekmek", 40)
+        );
+
+        mockMvc.perform(
+                        post(
+                                "/api/v1/donations/{donationId}/reservations",
+                                donation.getId()
+                        )
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                    {
+                                      "packageCount": 20
+                                    }
+                                    """)
+                )
+                .andExpect(status().isBadRequest());
+
+        assertEquals(0L, reservationRepository.count());
+
+        Donation unchangedDonation = donationRepository
+                .findById(donation.getId())
+                .orElseThrow();
+
+        assertEquals(0, unchangedDonation.getReservedPackageCount());
+        assertEquals(40, unchangedDonation.getAvailablePackageCount());
+    }
+
+    @Test
+    void shouldRejectReservationWithInvalidIdempotencyKey() throws Exception {
+        Donation donation = donationRepository.saveAndFlush(
+                new Donation("Paketli ekmek", 40)
+        );
+
+        mockMvc.perform(
+                        post(
+                                "/api/v1/donations/{donationId}/reservations",
+                                donation.getId()
+                        )
+                                .header("Idempotency-Key", "gecersiz-anahtar")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                    {
+                                      "packageCount": 20
+                                    }
+                                    """)
+                )
+                .andExpect(status().isBadRequest());
+
+        assertEquals(0L, reservationRepository.count());
+
+        Donation unchangedDonation = donationRepository
+                .findById(donation.getId())
+                .orElseThrow();
+
+        assertEquals(0, unchangedDonation.getReservedPackageCount());
+        assertEquals(40, unchangedDonation.getAvailablePackageCount());
+    }
+
+    @Test
+    void shouldReturnConflictWhenIdempotencyKeyIsReusedWithDifferentCount() throws Exception {
+        Donation donation = donationRepository.saveAndFlush(
+                new Donation("Paketli ekmek", 40)
+        );
+
+        UUID idempotencyKey = UUID.randomUUID();
+
+        mockMvc.perform(
+                post(
+                        "/api/v1/donations/{donationId}/reservations",
+                        donation.getId()
+                ).header("Idempotency-Key", idempotencyKey.toString())
+                .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                    {
+                                      "packageCount": 20
+                                    }
+                                    """)
+        ).andExpect(status().isCreated());
+        mockMvc.perform(
+                        post(
+                                "/api/v1/donations/{donationId}/reservations",
+                                donation.getId()
+                        )
+                                .header(
+                                        "Idempotency-Key",
+                                        idempotencyKey.toString()
+                                )
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                    {
+                                      "packageCount": 10
+                                    }
+                                    """)
+                )
+                .andExpect(status().isConflict())
+                .andExpect(
+                        jsonPath("$.code").value("IDEMPOTENCY_KEY_CONFLICT")
+                );
+
+        assertEquals(1L, reservationRepository.count());
+        Donation updatedDonation = donationRepository.findById(donation.getId()).orElseThrow();
+
+        assertEquals(20, updatedDonation.getReservedPackageCount());
+        assertEquals(20, updatedDonation.getAvailablePackageCount());
     }
 }

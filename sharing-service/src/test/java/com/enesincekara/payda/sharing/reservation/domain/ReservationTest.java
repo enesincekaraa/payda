@@ -82,4 +82,26 @@ class ReservationTest {
                 reservation.getStatus()
         );
     }
+
+    @Test
+    void shouldKeepProvidedIdempotencyKey() {
+        UUID donationId = UUID.randomUUID();
+        UUID idempotencyKey = UUID.randomUUID();
+
+        Reservation reservation = new Reservation(donationId, 15, idempotencyKey);
+
+        assertEquals(idempotencyKey, reservation.getIdempotencyKey());
+    }
+
+    @Test
+    void shouldRejectMissingIdempotencyKey() {
+        UUID donationId = UUID.randomUUID();
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new Reservation(donationId, 15, null)
+        );
+    }
+
+
 }

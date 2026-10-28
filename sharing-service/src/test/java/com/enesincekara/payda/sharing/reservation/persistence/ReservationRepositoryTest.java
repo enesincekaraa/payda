@@ -57,6 +57,7 @@ class ReservationRepositoryTest {
         assertEquals(savedDonation.getId(), found.getDonationId());
         assertEquals(15, found.getPackageCount());
         assertEquals(ReservationStatus.ACTIVE, found.getStatus());
+        assertEquals(reservation.getIdempotencyKey(),found.getIdempotencyKey());
         assertNotNull(found.getCreatedAt());
 
 
@@ -73,6 +74,32 @@ class ReservationRepositoryTest {
                 DataIntegrityViolationException.class,
                 () -> reservationRepository.saveAndFlush(reservation)
         );
+    }
+
+    @Test
+    void shouldRejectDuplicateIdempotencyKey(){
+        Donation donation = donationRepository.saveAndFlush(new Donation("Paketli ekmek", 40));
+
+        UUID idempotencyKey = UUID.randomUUID();
+
+        Reservation firstReservation = new Reservation(
+                donation.getId(),
+                15,
+                idempotencyKey
+        );
+
+        reservationRepository.saveAndFlush(firstReservation);
+        Reservation secondReservation = new Reservation(
+                donation.getId(),
+                15,
+                idempotencyKey
+        );
+
+        assertThrows(
+                DataIntegrityViolationException.class,
+                () -> reservationRepository.saveAndFlush(secondReservation)
+        );
+
     }
 
 }
