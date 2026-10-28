@@ -1,6 +1,7 @@
 package com.enesincekara.payda.sharing.donation.api;
 
 
+import com.enesincekara.payda.sharing.donation.application.DonationNotFoundException;
 import com.enesincekara.payda.sharing.donation.domain.InsufficientPackagesException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -31,6 +32,16 @@ public class DonationExceptionHandler {
         );
         problem.setTitle("Donation was modified");
         problem.setProperty("code", "DONATION_CONCURRENT_MODIFICATION");
+        return problem;
+    }
+    @ExceptionHandler(DonationNotFoundException.class)
+    public ProblemDetail handleDonationNotFoundException(DonationNotFoundException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+                HttpStatus.NOT_FOUND,
+                ex.getMessage()
+        );
+        problem.setTitle("Donation Not Found");
+        problem.setProperty("code", "DONATION_NOT_FOUND");
         return problem;
     }
 

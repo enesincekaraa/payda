@@ -67,6 +67,20 @@ public class Donation {
         reservedPackageCount += packageCount;
     }
 
+    public void release(int packageCount) {
+        if (packageCount <= 0) {
+            throw new IllegalArgumentException(
+                    "Reservation package count must be greater than zero"
+            );
+        }
+        if (packageCount>reservedPackageCount){
+            throw new IllegalStateException(
+                    "Release package count exceeds reserved packages"
+            );
+        }
+        reservedPackageCount -= packageCount;
+    }
+
     public UUID getId() {
         return id;
     }

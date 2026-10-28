@@ -3,6 +3,9 @@ package com.enesincekara.payda.sharing.donation.application;
 
 import com.enesincekara.payda.sharing.donation.domain.Donation;
 import com.enesincekara.payda.sharing.donation.persistence.DonationRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,14 +31,11 @@ public class DonationService {
         return donationRepository.findById(id);
     }
 
-    @Transactional
-    public Optional<Donation> reserve(UUID id,int packageCount) {
-        Optional<Donation> donation = donationRepository.findById(id);
-
-        if (donation.isEmpty()){
-            return Optional.empty();
-        }
-        donation.get().reserve(packageCount);
-        return donation;
+    @Transactional(readOnly = true)
+    public Page<Donation> findAvailable(int page, int size) {
+        PageRequest pageRequest = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC,"createdAt","id"));
+        return donationRepository.findAvailable(pageRequest);
     }
+
+
 }
